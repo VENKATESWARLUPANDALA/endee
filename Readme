@@ -1,0 +1,506 @@
+# Endee — Vector Database
+
+![Version](https://img.shields.io/badge/version-1.0.0-blue)
+![License](https://img.shields.io/badge/license-Apache--2.0-green)
+![Python](https://img.shields.io/badge/python-3.11%2B-yellow)
+![FastAPI](https://img.shields.io/badge/framework-FastAPI-teal)
+![USearch](https://img.shields.io/badge/ANN-USearch%20HNSW-purple)
+
+**Endee** is a high-performance open-source vector database built for AI search and retrieval workloads. It is designed for teams building RAG pipelines, semantic search, hybrid search, recommendation systems, and filtered vector retrieval APIs that need production-oriented performance and control.
+
+Endee combines HNSW-based dense vector search with sparse retrieval, Reciprocal Rank Fusion (RRF) for hybrid scoring, payload filtering, a full-stack dashboard UI, a built-in AI assistant, and live benchmarking — all with zero ML framework dependencies.
+
+---
+
+## Table of Contents
+
+- [Features](#features)
+- [Architecture](#architecture)
+- [Project Structure](#project-structure)
+- [Quick Start](#quick-start)
+- [Installation](#installation)
+- [Running the Server](#running-the-server)
+- [Loading Demo Data](#loading-demo-data)
+- [Dashboard UI](#dashboard-ui)
+- [API Reference](#api-reference)
+- [Demo Datasets](#demo-datasets)
+- [Use Cases](#use-cases)
+- [Tech Stack](#tech-stack)
+- [Contributing](#contributing)
+- [License](#license)
+
+---
+
+## Features
+
+| Feature | Description |
+|---|---|
+| **HNSW Dense Search** | Sub-millisecond ANN retrieval via USearch with configurable M and ef parameters |
+| **Hybrid Search** | Dense + sparse retrieval fused with Reciprocal Rank Fusion (RRF) |
+| **Payload Filtering** | Metadata-aware queries: `eq` `ne` `gt` `gte` `lt` `lte` `in` `contains` |
+| **Thread-safe** | RLock on all index operations for safe concurrent access |
+| **REST API** | FastAPI server with auto-generated OpenAPI docs at `/docs` |
+| **Full Dashboard** | Search, visualizer, AI assistant, benchmark, README generator |
+| **AI Assistant** | Chat interface that uses semantic search over your stored data |
+| **Live Benchmark** | Measure real ANN query latency with P95, P99 and QPS metrics |
+| **README Generator** | Auto-generates project documentation from live database state |
+| **Zero ML Deps** | No PyTorch or TensorFlow required to run |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Frontend (HTML/JS)                    │
+│  Overview · Indexes · Upsert · Search · Visualize       │
+│  AI Assistant · Benchmark · README Gen · API Docs       │
+└─────────────────────┬───────────────────────────────────┘
+                      │ HTTP REST
+┌─────────────────────▼───────────────────────────────────┐
+│               FastAPI Server (main.py)                   │
+│  /health  /stats  /indexes  /upsert  /search  /delete   │
+└─────────────────────┬───────────────────────────────────┘
+                      │
+┌─────────────────────▼───────────────────────────────────┐
+│              Core Engine (vector_db.py)                  │
+│                                                          │
+│  ┌─────────────────┐    ┌──────────────────────────┐    │
+│  │  Dense Search   │    │     Sparse Search        │    │
+│  │  USearch HNSW   │    │   TF-style dot product   │    │
+│  │  ANN Retrieval  │    │   token weight scoring   │    │
+│  └────────┬────────┘    └─────────────┬────────────┘    │
+│           │                           │                  │
+│           └──────────┬────────────────┘                  │
+│                      ▼                                   │
+│           ┌──────────────────────┐                       │
+│           │  RRF Hybrid Fusion   │                       │
+│           │  Payload Filtering   │                       │
+│           │  Score Transparency  │                       │
+│           └──────────────────────┘                       │
+└─────────────────────────────────────────────────────────┘
+```
+
+**Key design decisions:**
+- **Over-fetch then filter** — fetches `top_k × 10` candidates before applying payload filters to maintain result quality
+- **RRF fusion** — Reciprocal Rank Fusion combines dense and sparse rankings without score normalization issues
+- **Thread isolation** — each VectorIndex holds its own RLock so concurrent requests to different indexes never block each other
+- **Integer key mapping** — HNSW requires integer keys so string doc IDs are mapped internally via a bidirectional dict
+
+---
+
+## Project Structure
+
+```
+endee/
+├── .gitignore
+├── README.md
+├── backend/
+│   ├── main.py            # FastAPI REST server and all route handlers
+│   ├── vector_db.py       # Core engine: HNSW + sparse + RRF + filtering
+│   ├── models.py          # Pydantic schemas for all request/response types
+│   ├── demo_loader.py     # Loads 6 real-world demo datasets
+│   └── requirements.txt   # Python dependencies
+└── frontend/
+    └── index.html         # Full-stack single-file dashboard (no build step)
+```
+
+---
+
+## Quick Start
+
+```bash
+# 1. Clone the repository
+git clone https://github.com/YourUsername/endee.git
+cd endee/backend
+
+# 2. Create a virtual environment with Python 3.11
+py -3.11 -m venv venv
+venv\Scripts\activate        # Windows
+# source venv/bin/activate   # Mac/Linux
+
+# 3. Install dependencies
+pip install -r requirements.txt
+
+# 4. Start the server
+python main.py
+# → Server running at http://localhost:8080
+# → API docs at http://localhost:8080/docs
+
+# 5. Load demo datasets (new terminal, activate venv first)
+python demo_loader.py
+
+# 6. Open the dashboard
+# Double-click frontend/index.html in File Explorer
+# Or open http://localhost:8080/docs for raw API
+```
+
+---
+
+## Installation
+
+### Requirements
+
+- Python **3.11** (recommended — 3.14 not yet supported by FastAPI/Pydantic)
+- Windows 10/11, macOS, or Linux
+- No GPU required
+- No external database required — fully in-memory
+
+### Dependencies
+
+```
+fastapi==0.111.0
+uvicorn[standard]==0.30.1
+numpy>=2.1.0
+usearch>=2.9.0
+pydantic>=2.7.4
+requests>=2.31.0
+```
+
+Install all with:
+```bash
+pip install -r requirements.txt
+```
+
+---
+
+## Running the Server
+
+```bash
+# Activate venv first
+venv\Scripts\activate
+
+# Start server
+python main.py
+```
+
+Expected output:
+```
+INFO:     Uvicorn running on http://0.0.0.0:8080
+INFO:     Application startup complete.
+🚀 Endee Vector DB starting up
+```
+
+The server runs on port **8080** by default. Interactive API docs are available at:
+- Swagger UI: `http://localhost:8080/docs`
+- ReDoc: `http://localhost:8080/redoc`
+
+> ⚠️ Keep this terminal open. Closing it shuts down the server.
+
+---
+
+## Loading Demo Data
+
+Open a **second terminal**, activate the venv, then run:
+
+```bash
+python demo_loader.py
+```
+
+This loads **6 real-world datasets** totalling **110 documents** across 6 indexes:
+
+```
+✅ Created index 'tech-articles'   → 20 docs
+✅ Created index 'products'        → 15 docs
+✅ Created index 'movies'          → 15 docs
+✅ Created index 'conversations'   → 20 docs
+✅ Created index 'technical'       → 20 docs
+✅ Created index 'nlp-papers'      → 20 docs
+✅ ALL 6 DATASETS LOADED!
+```
+
+---
+
+## Dashboard UI
+
+Open `frontend/index.html` in your browser. No build step or extra server needed.
+
+### Panels
+
+| Panel | Description |
+|---|---|
+| **Overview** | Live stats — total indexes, documents, uptime, server status |
+| **Indexes** | Create and delete indexes with custom HNSW parameters |
+| **Upsert Docs** | Insert documents with dense vector, sparse vector and payload |
+| **Search** | Dense or hybrid search with live payload filters |
+| **Visualize** | 2D canvas projection of stored vectors colored by category |
+| **AI Assistant** | Chat interface using semantic search over your data |
+| **Benchmark** | Run N queries and measure avg, P95, P99 latency and QPS |
+| **README Gen** | Generate and download README.md from live database state |
+| **API Docs** | Interactive REST reference — try every endpoint live |
+
+### AI Assistant Demo Queries
+
+```
+Index: conversations  →  "how to deal with stress at work"
+Index: technical      →  "explain microservices vs monolith architecture"
+Index: nlp-papers     →  "transformer models for text classification"
+Index: movies         →  "sci-fi movies about space and humanity"
+Index: products       →  "wireless electronics under $200 in stock"
+```
+
+---
+
+## API Reference
+
+### System
+
+```http
+GET  /health           # Server health check
+GET  /stats            # Full database statistics
+```
+
+### Indexes
+
+```http
+POST   /indexes                    # Create a new vector index
+GET    /indexes                    # List all indexes
+GET    /indexes/{name}             # Get index info
+DELETE /indexes/{name}             # Delete an index
+```
+
+#### Create Index — Request Body
+
+```json
+{
+  "name": "my-index",
+  "dim": 128,
+  "metric": "cosine",
+  "M": 16,
+  "ef_construction": 200
+}
+```
+
+| Field | Type | Description |
+|---|---|---|
+| `name` | string | Unique index name |
+| `dim` | integer | Vector dimension (1–4096) |
+| `metric` | string | Distance metric: `cosine`, `l2`, or `ip` |
+| `M` | integer | HNSW bi-directional links per node |
+| `ef_construction` | integer | Build-time accuracy (higher = slower build, better recall) |
+
+---
+
+### Documents
+
+```http
+POST   /indexes/{name}/upsert                  # Insert or update documents
+DELETE /indexes/{name}/documents/{id}          # Delete a document
+```
+
+#### Upsert — Request Body
+
+```json
+{
+  "documents": [
+    {
+      "id": "doc-001",
+      "vector": [0.12, -0.45, 0.88],
+      "sparse_vector": {"ai": 0.9, "search": 0.7},
+      "payload": {"category": "tech", "year": 2024, "rating": 9.1}
+    }
+  ]
+}
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `id` | string | ✅ | Unique document ID |
+| `vector` | float[] | ✅ | Dense embedding vector |
+| `sparse_vector` | object | ❌ | Token weights for hybrid search |
+| `payload` | object | ❌ | Arbitrary metadata for filtering |
+
+---
+
+### Search
+
+```http
+POST /indexes/{name}/search
+```
+
+#### Request Body
+
+```json
+{
+  "vector": [0.12, -0.45, 0.88],
+  "sparse_vector": {"ai": 0.9, "search": 0.7},
+  "top_k": 10,
+  "alpha": 0.7,
+  "ef_search": 100,
+  "filters": [
+    {"field": "category", "op": "eq",  "value": "tech"},
+    {"field": "rating",   "op": "gte", "value": 8.5},
+    {"field": "in_stock", "op": "eq",  "value": true}
+  ],
+  "include_payload": true
+}
+```
+
+| Field | Type | Default | Description |
+|---|---|---|---|
+| `vector` | float[] | required | Query embedding |
+| `sparse_vector` | object | null | Sparse query tokens — enables hybrid mode |
+| `top_k` | integer | 10 | Number of results to return |
+| `alpha` | float | 0.7 | Hybrid blend: `1.0` = dense only, `0.0` = sparse only |
+| `ef_search` | integer | 100 | Search accuracy (higher = slower, better recall) |
+| `filters` | array | [] | Payload filter conditions (AND logic) |
+| `include_payload` | boolean | true | Include payload in results |
+
+#### Filter Operators
+
+| Operator | Description | Example |
+|---|---|---|
+| `eq` | Equal | `{"field": "genre", "op": "eq", "value": "sci-fi"}` |
+| `ne` | Not equal | `{"field": "status", "op": "ne", "value": "draft"}` |
+| `gt` | Greater than | `{"field": "year", "op": "gt", "value": 2020}` |
+| `gte` | Greater than or equal | `{"field": "rating", "op": "gte", "value": 8.0}` |
+| `lt` | Less than | `{"field": "price", "op": "lt", "value": 100}` |
+| `lte` | Less than or equal | `{"field": "price", "op": "lte", "value": 200}` |
+| `in` | Value in list | `{"field": "tag", "op": "in", "value": ["AI","ML"]}` |
+| `contains` | String contains | `{"field": "title", "op": "contains", "value": "neural"}` |
+
+#### Response
+
+```json
+{
+  "hits": [
+    {
+      "id": "doc-001",
+      "score": 0.923456,
+      "dense_score": 0.891234,
+      "sparse_score": 0.032222,
+      "payload": {"category": "tech", "year": 2024}
+    }
+  ],
+  "total": 1,
+  "query_time_ms": 2.341,
+  "index": "my-index",
+  "mode": "hybrid"
+}
+```
+
+---
+
+## Demo Datasets
+
+| Index | Docs | Content | Good for |
+|---|---|---|---|
+| `tech-articles` | 20 | AI, ML, databases, devops articles | Semantic search, rating filter |
+| `products` | 15 | Electronics, books, appliances | Price filter, in_stock filter |
+| `movies` | 15 | International films with metadata | Genre filter, hybrid search |
+| `conversations` | 20 | General Q&A on health, finance, travel | Topic and intent filters |
+| `technical` | 20 | Software engineering topics | Domain and level filters |
+| `nlp-papers` | 20 | NLP research: BERT, GPT, RAG | Task and year filters |
+
+---
+
+## Use Cases
+
+### RAG Pipelines
+Use Endee as the retrieval layer for LLM question answering, chat assistants, and copilots that need fast vector search with metadata filtering.
+
+```python
+# Store document embeddings
+requests.post("http://localhost:8080/indexes/docs/upsert", json={
+    "documents": [{"id": "chunk-1", "vector": embed(text), "payload": {"source": "manual.pdf"}}]
+})
+
+# Retrieve at query time
+results = requests.post("http://localhost:8080/indexes/docs/search", json={
+    "vector": embed(query), "top_k": 5, "include_payload": True
+})
+```
+
+### Semantic Search
+Find conceptually similar documents without keyword matching.
+
+### Hybrid Search
+Combine dense retrieval with sparse keyword signals for better relevance on domain-specific content.
+
+```json
+{
+  "vector": [...],
+  "sparse_vector": {"neural": 0.9, "network": 0.7},
+  "alpha": 0.6
+}
+```
+
+### AI Agent Memory
+Store and retrieve past observations, tool outputs, and conversation history for autonomous agents built with LangChain, CrewAI, or AutoGen.
+
+### Recommendations
+ANN-based similarity matching across items, users, or content embeddings.
+
+---
+
+## Tech Stack
+
+| Layer | Technology | Purpose |
+|---|---|---|
+| **API Server** | FastAPI | REST endpoints, OpenAPI docs |
+| **ASGI Server** | Uvicorn | High-performance async server |
+| **ANN Index** | USearch (HNSW) | Dense vector search |
+| **Sparse Search** | Custom dot product | Token-weight similarity |
+| **Fusion** | RRF (Reciprocal Rank Fusion) | Hybrid score combination |
+| **Schemas** | Pydantic v2 | Request/response validation |
+| **Numerics** | NumPy | Vector operations |
+| **Frontend** | Vanilla HTML/CSS/JS | Zero-dependency dashboard |
+| **Fonts** | Plus Jakarta Sans + JetBrains Mono | Dashboard typography |
+
+---
+
+## Performance
+
+Typical latency on a modern laptop with 50–100 documents:
+
+| Metric | Value |
+|---|---|
+| Avg query latency | < 5ms |
+| P95 latency | < 10ms |
+| Throughput | 200–500 QPS |
+
+Run the built-in benchmark from the dashboard **Benchmark** panel to measure on your own hardware.
+
+---
+
+## Contributing
+
+Contributions are welcome!
+
+```bash
+# Fork the repo, clone it, create a branch
+git checkout -b feature/my-feature
+
+# Make changes, then
+git add .
+git commit -m "Add: description of change"
+git push origin feature/my-feature
+
+# Open a Pull Request on GitHub
+```
+
+- Submit pull requests for fixes, features, and improvements
+- Report bugs through GitHub Issues
+- Propose enhancements for search quality, performance, and deployment
+
+---
+
+## License
+
+Apache License 2.0 — see [LICENSE](LICENSE) for full terms.
+
+**Trademark:** "Endee" and the Endee logo are trademarks of Endee Labs. The Apache License 2.0 does not grant permission to use the Endee name or branding in a way that suggests endorsement or affiliation.
+
+---
+
+## Author
+
+Built by **Venkateswarlu** as a full-stack vector database implementation demonstrating:
+- Production-grade ANN search with HNSW
+- Hybrid retrieval with Reciprocal Rank Fusion
+- Metadata-aware filtered vector search
+- Full-stack dashboard with AI assistant and live benchmarking
+
+---
+
+*If this project helped you, please give it a ⭐ on GitHub!*

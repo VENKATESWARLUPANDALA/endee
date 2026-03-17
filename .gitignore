@@ -1,32 +1,40 @@
-
-# Ignore build directory
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
 build/
-# Ignore build like directory
-build*/
-# Ignore all files in the build directory
-build/*
+eggs/
+parts/
+var/
+sdist/
+wheels/
+*.so
 
-# Ignore tests build directory
-tests/build/
-tests/build*/
+# Virtual Environment — never push this
+venv/
+env/
+ENV/
+.venv/
 
-# Test binaries
-tests/**/ndd_filter_test
-
-# macOS debug symbols
-*.dSYM/
-
-# Sometimes data files are created for tetsing
-data/
-data/*
-
-# VS Code directory
+# IDE
 .vscode/
-.vscode/*
-
-# Frontend
-frontend/
-frontend/*
-
-# DS Store
+.idea/
+*.swp
+*.swo
 .DS_Store
+
+# Logs
+*.log
+
+# Environment variables
+.env
+.env.local
+
+# Windows
+Thumbs.db
+Desktop.ini
